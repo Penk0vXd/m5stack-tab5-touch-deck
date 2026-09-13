@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "platform": "windows",
+  "grid": { "cols": 5, "rows": 3 },
+  "brightness": 80,
+  "screensaver_sec": 180,
+  "pages": [
+    {
+      "id": "home",
+      "title": "Home",
+      "buttons": [
+        { "label": "Copy",  "color": "cyan",   "action": { "type": "hid_keys", "keys": ["PRIMARY", "C"] } },
+        { "label": "Paste", "color": "cyan",   "action": { "type": "hid_keys", "keys": ["PRIMARY", "V"] } },
+        { "label": "Undo",  "color": "cyan",   "action": { "type": "hid_keys", "keys": ["PRIMARY", "Z"] } },
+        { "label": "Git",   "color": "violet", "action": { "type": "goto_page", "page": "git" } },
+        { "label": "Media", "color": "rose",   "action": { "type": "goto_page", "page": "media" } },
+
+        { "label": "Terminal", "color": "green", "action": { "type": "hid_keys", "keys": ["PRIMARY", "GRAVE"] } },
+        { "label": "Command",  "color": "green", "action": { "type": "hid_keys", "keys": ["PRIMARY", "SHIFT", "P"] } },
+        { "label": "Switch",   "color": "blue",  "action": { "type": "hid_keys", "keys": ["ALT", "TAB"] } },
+        { "label": "Lock",     "color": "amber", "action": { "type": "hid_keys", "keys": ["GUI", "L"] } },
+        { "label": "Snip",     "color": "amber", "action": { "type": "hid_keys", "keys": ["GUI", "SHIFT", "S"] } },
+
+        { "label": "Docker up",   "color": "blue",   "action": { "type": "agent", "command": "docker_up" } },
+        { "label": "Docker down", "color": "rose",   "action": { "type": "agent", "command": "docker_down" } },
+        { "label": "Notes",       "color": "violet", "action": { "type": "agent", "command": "open_notes" } },
+        { "label": "CPU",         "color": "cyan",   "tile": "cpu" },
+        { "label": "RAM",         "color": "green",  "tile": "mem" }
+      ]
+    },
+    {
+      "id": "git",
+      "title": "Git",
+      "match": ["visual studio code", "cmd.exe", "powershell"],
+      "buttons": [
+        {
+          "label": "Commit",
+          "color": "violet",
+          "action": {
+            "type": "macro",
+            "steps": [
+              { "type": "hid_keys", "keys": ["PRIMARY", "GRAVE"] },
+              { "type": "delay", "ms": 120 },
+              { "type": "text", "text": "git add -A && git commit\n" }
+            ]
+          }
+        },
+        { "label": "Status",  "color": "cyan",  "action": { "type": "agent", "command": "git_status" } },
+        { "label": "Push",    "color": "green", "action": { "type": "text", "text": "git push\n" } },
+        { "label": "Pull",    "color": "blue",  "action": { "type": "text", "text": "git pull --rebase\n" } },
+        { "label": "Back",    "color": "amber", "action": { "type": "goto_page", "page": "home" } }
+      ]
+    },
+    {
+      "id": "media",
+      "title": "Media",
+      "match": ["spotify", "youtube", "vlc"],
+      "buttons": [
+        { "label": "Volume", "color": "rose", "slider": { "key_up": "VOLUME_UP", "key_down": "VOLUME_DOWN", "step": 4 } },
+        { "label": "Mute",  "color": "amber",  "action": { "type": "hid_consumer", "key": "MUTE" } },
+        { "label": "Play",  "color": "green",  "action": { "type": "hid_consumer", "key": "PLAY_PAUSE" } },
+        { "label": "Next",  "color": "cyan",   "action": { "type": "hid_consumer", "key": "NEXT_TRACK" } },
+        { "label": "Back",  "color": "violet", "action": { "type": "goto_page", "page": "home" } }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+# Touch Deck host agent configuration.
+#
+# Copy to config.toml and edit. The device can only ask for commands listed
+# here, by name. Anything else is refused - the device is untrusted input.
+
+[device]
+vendor_id = 0x303A
+product_id = 0x4004
+# Vendor defined usage page of the raw HID interface. The keyboard interface
+# is deliberately skipped: Windows owns that one.
+usage_page = 0xFF00
+
+[agent]
+log_level = "INFO"
+# Seconds between telemetry packets sent to the device.
+telemetry_interval = 2.0
+# Seconds between active window checks; the device switches page on a match.
+profile_interval = 1.0
+# Reconnect delay when the device disappears.
+reconnect_delay = 1.5
+
+# Commands the device may run. Key is the name the device sends.
+# argv is passed to subprocess without a shell, so no shell metacharacters,
+# no pipes, no redirection. Add "cwd" when the command needs a directory.
+
+[commands.docker_up]
+argv = ["docker", "compose", "up", "-d"]
+cwd = "C:/projects/my-stack"
+
+[commands.docker_down]
+argv = ["docker", "compose", "down"]
+cwd = "C:/projects/my-stack"
+
+[commands.git_status]
+argv = ["git", "status", "--short"]
+cwd = "C:/projects/my-stack"
+
+[commands.open_notes]
+argv = ["notepad.exe", "C:/Users/Public/notes.txt"]

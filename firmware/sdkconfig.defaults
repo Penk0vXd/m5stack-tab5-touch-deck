@@ -1,0 +1,54 @@
+# Target
+CONFIG_IDF_TARGET="esp32p4"
+
+# The Tab5 units seen so far report chip revision v1.3, which predates the
+# v3.x silicon IDF defaults to. v3.x and <v3.0 support are mutually exclusive
+# in IDF, so this must be selected explicitly.
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_100=y
+
+# Partition table (see partitions.csv)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_OFFSET=0x10000
+
+# PSRAM: 32 MB Hex PSRAM on Tab5, needed for LVGL buffers and icon cache
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+CONFIG_SPIRAM_RODATA=y
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+
+# Flash
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# CPU at full speed: UI rendering and USB share the two cores
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360=y
+CONFIG_FREERTOS_HZ=1000
+
+# TinyUSB: two HID interfaces (keyboard+consumer, raw vendor channel)
+CONFIG_TINYUSB_HID_COUNT=2
+# EXPERIMENT 2: FS (OTG1.1) rhport did not enumerate either, despite the
+# official M5Stack Tab5 Keyboard demo documenting "USBC OTG (FS)" as the
+# Type-C mode. Try HS (OTG2.0/UTMI, the P4 default) instead.
+CONFIG_TINYUSB_RHPORT_HS=y
+# CONFIG_TINYUSB_RHPORT_FS is not set
+CONFIG_TINYUSB_CDC_ENABLED=n
+CONFIG_TINYUSB_MSC_ENABLED=n
+
+# Console on UART so it survives TinyUSB owning the USB port
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+
+# LVGL
+CONFIG_LV_COLOR_DEPTH_16=y
+CONFIG_LV_MEM_SIZE_KILOBYTES=64
+CONFIG_LV_USE_PERF_MONITOR=y
+
+# Large fonts: the deck is read from arm's length, 14 px is unusable here
+CONFIG_LV_FONT_MONTSERRAT_20=y
+CONFIG_LV_FONT_MONTSERRAT_24=y
+CONFIG_LV_FONT_MONTSERRAT_28=y
+CONFIG_LV_FONT_MONTSERRAT_36=y

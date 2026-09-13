@@ -1,0 +1,181 @@
+# ============================================================
+# Tab5 Touch Deck
+# ============================================================
+
+
+# ============================================================
+# 1. Secrets & Personal Configuration
+# ============================================================
+
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+secrets.*
+!secrets.example.*
+
+credentials.*
+!credentials.example.*
+
+auth.json
+
+# Private key material
+*.key
+*.p12
+*.pfx
+*.rsa
+
+# PEM files may contain private keys.
+# Remove this rule if the project later needs tracked public CA/cert PEM files.
+*.pem
+
+# Personal host-agent configuration
+/host-agent/config.toml
+/host-agent/config.local.toml
+/host-agent/local_profiles/
+
+# Personal/local deck overrides
+/storage/config.local.json
+
+
+# ============================================================
+# 2. ESP-IDF / Firmware
+# ============================================================
+
+/firmware/build/
+/firmware/build-*/
+
+/firmware/managed_components/
+
+# Local generated ESP-IDF config.
+# Project-required settings must be stored in sdkconfig.defaults.
+/firmware/sdkconfig
+/firmware/sdkconfig.old
+
+/firmware/build_log.txt
+
+# CMake / Ninja leftovers outside build directory
+/firmware/.ninja_deps
+/firmware/.ninja_log
+/firmware/CMakeCache.txt
+/firmware/CMakeFiles/
+/firmware/Makefile
+/firmware/cmake_install.cmake
+
+# ESP-IDF test / coverage artifacts
+pytest-embedded/
+pytest_embedded_log/
+coverage_report/
+coverage.info
+*.gcda
+*.gcno
+
+# IMPORTANT:
+# firmware/dependencies.lock is intentionally NOT ignored.
+# It should be committed once local-path dependency issues are resolved
+# so component versions remain reproducible.
+
+
+# ============================================================
+# 3. Python
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+.venv/
+venv/
+ENV/
+env/
+.env/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+.coverage
+htmlcov/
+
+*.whl
+*.egg-info/
+.eggs/
+
+pip-log.txt
+pip-delete-this-directory.txt
+
+
+# ============================================================
+# 4. Logs / Temporary / Backup Files
+# ============================================================
+
+*.log
+logs/
+
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+
+*.dmp
+
+
+# ============================================================
+# 5. IDEs & Editors
+# ============================================================
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+*.code-workspace
+.history/
+
+# JetBrains / CLion / PyCharm
+.idea/
+*.iml
+*.iws
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.sln.docstates
+
+.clang-format.backup
+
+
+# ============================================================
+# 6. Operating System Files
+# ============================================================
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux
+.fuse_hidden*
+.directory
+.Trash-*

@@ -1,0 +1,11 @@
+dependencies:
+  idf: ">=5.4"
+  # Local override of espressif/m5stack_tab5: upstream's bsp_get_board_version()
+  # only probes the GT911 touch controller at its backup I2C address (0x14) and
+  # hard-asserts (crashes) when a unit's GT911 answers on the primary address
+  # (0x5D) instead. See firmware/components/m5stack_tab5/src/bsp_display.c for
+  # the patch. Bump the version here when re-vendoring a newer upstream release.
+  espressif/m5stack_tab5:
+    version: "^1.3.0"
+    override_path: "../components/m5stack_tab5"
+  espressif/esp_tinyusb: "^1.4"
