@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import queue
 import subprocess
 import sys
 import threading
@@ -71,10 +72,16 @@ class DeviceLink:
         if path is None:
             return False
         dev = hid.device()
-        dev.open_path(path)
-        dev.set_nonblocking(False)
-        LOG.info("connected to %s %s", dev.get_manufacturer_string(), dev.get_product_string())
+        try:
+            dev.open_path(path)
+            dev.set_nonblocking(False)
+            manufacturer = dev.get_manufacturer_string()
+            product = dev.get_product_string()
+        except OSError:
+            dev.close()
+            raise
         self._dev = dev
+        LOG.info("connected to %s %s", manufacturer, product)
         return True
 
     def close(self) -> None:
@@ -94,7 +101,7 @@ class DeviceLink:
 
     def send(self, packet: Packet) -> None:
         if self._dev is None:
-            return
+            raise OSError("device is not open")
         with self._write_lock:
             self._dev.write(packet.to_bytes())
 
@@ -117,6 +124,16 @@ class CommandRunner:
         cwd = entry.get("cwd")
         LOG.info("running %r: %s", name, " ".join(argv))
         try:
+            if entry.get("detach", False):
+                subprocess.Popen(
+                    argv,
+                    cwd=cwd,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    shell=False,
+                )
+                return ACK_OK, "launched"
             completed = subprocess.run(
                 argv,
                 cwd=cwd,
@@ -191,27 +208,75 @@ def profile_loop(link: DeviceLink, interval: float, stop: threading.Event) -> No
             return
 
 
+def heartbeat_loop(link: DeviceLink, interval: float, stop: threading.Event) -> None:
+    """Probes the device without creating a ping-pong response loop."""
+    seq = 0
+    while not stop.wait(interval):
+        seq = (seq + 1) & 0xFF
+        try:
+            link.send(Packet(MSG_PING, seq, b""))
+        except OSError as exc:
+            LOG.debug("heartbeat send failed: %s", exc)
+            return
+
+
+def command_loop(
+    link: DeviceLink,
+    runner: CommandRunner,
+    requests: queue.Queue[Packet],
+    stop: threading.Event,
+) -> None:
+    """Runs commands away from the HID receive loop, one at a time."""
+    while not stop.is_set():
+        try:
+            packet = requests.get(timeout=0.25)
+        except queue.Empty:
+            continue
+
+        status, detail = runner.run(packet.text())
+        try:
+            link.send(make_ack(packet.seq, status, detail))
+        except OSError as exc:
+            LOG.debug("command ACK failed: %s", exc)
+            return
+
+
 def serve(config: dict) -> None:
     dev_cfg = config["device"]
     agent_cfg = config.get("agent", {})
-    link = DeviceLink(dev_cfg["vendor_id"], dev_cfg["product_id"], dev_cfg["usage_page"])
     runner = CommandRunner(config.get("commands", {}))
     reconnect_delay = float(agent_cfg.get("reconnect_delay", 1.5))
     telemetry_interval = float(agent_cfg.get("telemetry_interval", 2.0))
+    heartbeat_interval = float(agent_cfg.get("heartbeat_interval", 3.0))
 
     while True:
-        if not link.open():
+        link = DeviceLink(dev_cfg["vendor_id"], dev_cfg["product_id"], dev_cfg["usage_page"])
+        try:
+            opened = link.open()
+        except OSError as exc:
+            LOG.warning("device open failed: %s", exc)
+            opened = False
+        if not opened:
             LOG.info("device not found, retrying in %.1fs", reconnect_delay)
             time.sleep(reconnect_delay)
             continue
 
         stop = threading.Event()
+        command_requests: queue.Queue[Packet] = queue.Queue(maxsize=8)
         threading.Thread(
             target=telemetry_loop, args=(link, telemetry_interval, stop), daemon=True
         ).start()
         threading.Thread(
             target=profile_loop,
             args=(link, float(agent_cfg.get("profile_interval", 1.0)), stop),
+            daemon=True,
+        ).start()
+        threading.Thread(
+            target=heartbeat_loop, args=(link, heartbeat_interval, stop), daemon=True
+        ).start()
+        threading.Thread(
+            target=command_loop,
+            args=(link, runner, command_requests, stop),
             daemon=True,
         ).start()
 
@@ -223,10 +288,13 @@ def serve(config: dict) -> None:
                 if packet.msg_type == MSG_HELLO:
                     LOG.info("device says hello: %s", packet.text())
                 elif packet.msg_type == MSG_PING:
-                    link.send(Packet(MSG_PING, packet.seq, b""))
+                    LOG.debug("device answered ping %d", packet.seq)
                 elif packet.msg_type == MSG_CMD:
-                    status, detail = runner.run(packet.text())
-                    link.send(make_ack(packet.seq, status, detail))
+                    try:
+                        command_requests.put_nowait(packet)
+                    except queue.Full:
+                        LOG.warning("command queue full; rejecting %r", packet.text())
+                        link.send(make_ack(packet.seq, ACK_FAILED, "busy"))
                 else:
                     LOG.debug("unhandled message type 0x%02x", packet.msg_type)
         except OSError as exc:

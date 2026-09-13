@@ -22,6 +22,5 @@ Snapshot: **2026-09-13**. Източник на истината са applicatio
 - [IMAGES](IMAGES.md): снимки и изисквания към изображенията.
 - [ROADMAP](ROADMAP.md): предложения, които още не са доставени.
 - [CHANGELOG](CHANGELOG.md): промени без измислени releases.
-- [TAB5_PROJECT_IDEAS](TAB5_PROJECT_IDEAS.md): оригинален каталог; Touch Deck е идея 04. Другите идеи не са функции на firmware-а. Общите хардуерни описания там не заменят текущите BSP и HARDWARE.
 
 `TODO` е предстояща задача; `Needs verification` е непотвърдено поведение; `Not implemented yet` е липсваща реализация. При промяна на поведение обновявайте ръководството, CURRENT_STATE и CHANGELOG. Активирайте image reference само след добавяне на действителния файл. Не публикувайте локални настройки или необработени build логове.

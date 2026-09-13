@@ -23,6 +23,23 @@
 - **Python Агент:** Стартирайте `agent.py` с допълнителни флагове (ако са имплементирани) за по-подробен изход (verbose mode).
 - **JTAG:** За дълбок дебъг на ESP32-P4 може да се използва JTAG интерфейс, ако хардуерът го позволява.
 
+## Автоматични проверки
+
+От корена на проекта изпълнете тестовете на host агента без допълнителен test framework:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s host-agent\tests -v
+node --check editor\app.js
+python -m json.tool storage\config.json
+```
+
+За firmware проверка използвайте ESP-IDF 5.5.5 PowerShell:
+
+```powershell
+cd firmware
+idf.py build
+```
+
 ## Логове
 
 - Използвайте макросите `ESP_LOGI`, `ESP_LOGE`, `ESP_LOGW`, `ESP_LOGD` от ESP-IDF.

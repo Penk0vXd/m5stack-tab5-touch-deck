@@ -27,6 +27,9 @@ extern "C" {
 #define TD_CFG_COMMAND_LEN      32
 #define TD_CFG_MAX_MATCH        4
 #define TD_CFG_MATCH_LEN        24
+#define TD_CFG_ICON_LEN         16
+#define TD_CFG_HINT_LEN         24
+#define TD_CFG_VARIANT_LEN      12
 
 typedef enum {
     TD_ACTION_NONE = 0,
@@ -37,6 +40,7 @@ typedef enum {
     TD_ACTION_AGENT,
     TD_ACTION_GOTO_PAGE,
     TD_ACTION_DELAY,
+    TD_ACTION_BRIGHTNESS,
 } td_action_type_t;
 
 typedef struct {
@@ -46,6 +50,7 @@ typedef struct {
     uint8_t key_count;
     uint16_t consumer_usage;           /* HID_CONSUMER */
     uint32_t delay_ms;                 /* DELAY */
+    uint8_t brightness;                /* BRIGHTNESS: 1..100 percent */
     char text[TD_CFG_TEXT_LEN];        /* TEXT */
     char command[TD_CFG_COMMAND_LEN];  /* AGENT: name the host agent must know */
     char page[TD_CFG_ID_LEN];          /* GOTO_PAGE */
@@ -67,6 +72,9 @@ typedef struct {
 
 typedef struct {
     char label[TD_CFG_LABEL_LEN];
+    char icon[TD_CFG_ICON_LEN];
+    char hint[TD_CFG_HINT_LEN];
+    char variant[TD_CFG_VARIANT_LEN];
     char tile[TD_CFG_ID_LEN];   /* non-empty: renders a telemetry tile instead */
     /* Accent name ("cyan", "amber", ...) or "#RRGGBB". Empty means the UI
      * picks one from the accent ramp by position. */
@@ -75,12 +83,21 @@ typedef struct {
     td_action_t action;         /* used when action.type != TD_ACTION_MACRO */
     td_macro_t macro;           /* used when action.type == TD_ACTION_MACRO */
     td_action_t long_press;     /* TD_ACTION_NONE when not configured */
+    td_macro_t long_press_macro;
     bool has_long_press;
+    bool has_position;
+    uint8_t col;
+    uint8_t row;
+    uint8_t col_span;
+    uint8_t row_span;
 } td_button_t;
 
 typedef struct {
     char id[TD_CFG_ID_LEN];
     char title[TD_CFG_LABEL_LEN];
+    char icon[TD_CFG_ICON_LEN];
+    uint8_t cols;
+    uint8_t rows;
     td_button_t buttons[TD_CFG_MAX_BUTTONS];
     uint8_t button_count;
     /* Lower-case substrings of the host's active window title. First page whose

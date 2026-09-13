@@ -181,6 +181,16 @@ static bool parse_action(const cJSON *node, td_action_t *action, td_macro_t *mac
         action->delay_ms = cJSON_IsNumber(ms) ? (uint32_t)ms->valuedouble : 100;
         return true;
     }
+    if (strcmp(type->valuestring, "brightness") == 0) {
+        const cJSON *percent = cJSON_GetObjectItemCaseSensitive(node, "percent");
+        if (!cJSON_IsNumber(percent) || percent->valueint < 1 || percent->valueint > 100) {
+            set_err(err_msg, err_len, "brightness percent must be 1..100");
+            return false;
+        }
+        action->type = TD_ACTION_BRIGHTNESS;
+        action->brightness = (uint8_t)percent->valueint;
+        return true;
+    }
     if (strcmp(type->valuestring, "macro") == 0) {
         if (macro == NULL) {
             set_err(err_msg, err_len, "nested macros are not supported");
@@ -201,6 +211,12 @@ static bool parse_button(const cJSON *node, td_button_t *button, char *err_msg, 
     memset(button, 0, sizeof(*button));
     copy_string(button->label, sizeof(button->label),
                 cJSON_GetObjectItemCaseSensitive(node, "label"), "?");
+    copy_string(button->icon, sizeof(button->icon),
+                cJSON_GetObjectItemCaseSensitive(node, "icon"), "");
+    copy_string(button->hint, sizeof(button->hint),
+                cJSON_GetObjectItemCaseSensitive(node, "hint"), "");
+    copy_string(button->variant, sizeof(button->variant),
+                cJSON_GetObjectItemCaseSensitive(node, "variant"), "");
     copy_string(button->tile, sizeof(button->tile),
                 cJSON_GetObjectItemCaseSensitive(node, "tile"), "");
     copy_string(button->color, sizeof(button->color),
@@ -217,7 +233,14 @@ static bool parse_button(const cJSON *node, td_button_t *button, char *err_msg, 
             set_err(err_msg, err_len, "slider '%s' needs valid key_up and key_down", button->label);
             return false;
         }
-        button->slider.step = cJSON_IsNumber(step) && step->valueint > 0 ? (uint8_t)step->valueint : 4;
+        if (step == NULL) {
+            button->slider.step = 4;
+        } else if (!cJSON_IsNumber(step) || step->valueint < 1 || step->valueint > 100) {
+            set_err(err_msg, err_len, "slider '%s' step must be 1..100", button->label);
+            return false;
+        } else {
+            button->slider.step = (uint8_t)step->valueint;
+        }
         button->slider.enabled = true;
     }
 
@@ -228,20 +251,62 @@ static bool parse_button(const cJSON *node, td_button_t *button, char *err_msg, 
 
     const cJSON *long_press = cJSON_GetObjectItemCaseSensitive(node, "long_press");
     if (cJSON_IsObject(long_press)) {
-        if (!parse_action(long_press, &button->long_press, NULL, err_msg, err_len)) {
+        if (!parse_action(long_press, &button->long_press, &button->long_press_macro,
+                          err_msg, err_len)) {
             return false;
         }
         button->has_long_press = true;
     }
+
+    const cJSON *position = cJSON_GetObjectItemCaseSensitive(node, "position");
+    if (cJSON_IsObject(position)) {
+        const cJSON *col = cJSON_GetObjectItemCaseSensitive(position, "col");
+        const cJSON *row = cJSON_GetObjectItemCaseSensitive(position, "row");
+        const cJSON *col_span = cJSON_GetObjectItemCaseSensitive(position, "col_span");
+        const cJSON *row_span = cJSON_GetObjectItemCaseSensitive(position, "row_span");
+        if (!cJSON_IsNumber(col) || !cJSON_IsNumber(row) || col->valueint < 0 ||
+            row->valueint < 0 || col->valueint > 11 || row->valueint > 5) {
+            set_err(err_msg, err_len, "button '%s' has invalid position", button->label);
+            return false;
+        }
+        const int cs = cJSON_IsNumber(col_span) ? col_span->valueint : 1;
+        const int rs = cJSON_IsNumber(row_span) ? row_span->valueint : 1;
+        if (cs < 1 || cs > 12 || rs < 1 || rs > 6) {
+            set_err(err_msg, err_len, "button '%s' has invalid span", button->label);
+            return false;
+        }
+        button->has_position = true;
+        button->col = (uint8_t)col->valueint;
+        button->row = (uint8_t)row->valueint;
+        button->col_span = (uint8_t)cs;
+        button->row_span = (uint8_t)rs;
+    }
     return true;
 }
 
-static bool parse_page(const cJSON *node, td_page_t *page, char *err_msg, size_t err_len)
+static bool parse_page(const cJSON *node, td_page_t *page, uint8_t default_cols,
+                       uint8_t default_rows, char *err_msg, size_t err_len)
 {
     memset(page, 0, sizeof(*page));
     copy_string(page->id, sizeof(page->id), cJSON_GetObjectItemCaseSensitive(node, "id"), "page");
     copy_string(page->title, sizeof(page->title),
                 cJSON_GetObjectItemCaseSensitive(node, "title"), page->id);
+    copy_string(page->icon, sizeof(page->icon),
+                cJSON_GetObjectItemCaseSensitive(node, "icon"), "");
+    page->cols = default_cols;
+    page->rows = default_rows;
+
+    const cJSON *grid = cJSON_GetObjectItemCaseSensitive(node, "grid");
+    if (cJSON_IsObject(grid)) {
+        const cJSON *cols = cJSON_GetObjectItemCaseSensitive(grid, "cols");
+        const cJSON *rows = cJSON_GetObjectItemCaseSensitive(grid, "rows");
+        if (cJSON_IsNumber(cols) && cols->valueint >= 1 && cols->valueint <= 12) {
+            page->cols = (uint8_t)cols->valueint;
+        }
+        if (cJSON_IsNumber(rows) && rows->valueint >= 1 && rows->valueint <= 6) {
+            page->rows = (uint8_t)rows->valueint;
+        }
+    }
 
     const cJSON *match = cJSON_GetObjectItemCaseSensitive(node, "match");
     const cJSON *pattern = NULL;
@@ -258,6 +323,7 @@ static bool parse_page(const cJSON *node, td_page_t *page, char *err_msg, size_t
 
     const cJSON *buttons = cJSON_GetObjectItemCaseSensitive(node, "buttons");
     const cJSON *button = NULL;
+    bool occupied[6][12] = {0};
     cJSON_ArrayForEach(button, buttons) {
         if (page->button_count >= TD_CFG_MAX_BUTTONS) {
             set_err(err_msg, err_len, "page '%s' has more than %d buttons", page->id,
@@ -266,6 +332,24 @@ static bool parse_page(const cJSON *node, td_page_t *page, char *err_msg, size_t
         }
         if (!parse_button(button, &page->buttons[page->button_count], err_msg, err_len)) {
             return false;
+        }
+        td_button_t *parsed = &page->buttons[page->button_count];
+        const uint8_t col = parsed->has_position ? parsed->col : page->button_count % page->cols;
+        const uint8_t row = parsed->has_position ? parsed->row : page->button_count / page->cols;
+        const uint8_t col_span = parsed->has_position ? parsed->col_span : 1;
+        const uint8_t row_span = parsed->has_position ? parsed->row_span : 1;
+        if (col + col_span > page->cols || row + row_span > page->rows) {
+            set_err(err_msg, err_len, "button '%s' exceeds page grid", parsed->label);
+            return false;
+        }
+        for (uint8_t y = row; y < row + row_span; y++) {
+            for (uint8_t x = col; x < col + col_span; x++) {
+                if (occupied[y][x]) {
+                    set_err(err_msg, err_len, "button '%s' overlaps another button", parsed->label);
+                    return false;
+                }
+                occupied[y][x] = true;
+            }
         }
         page->button_count++;
     }
@@ -285,12 +369,13 @@ esp_err_t td_config_load(const char *config_path, td_config_t *out_config,
     }
 
     cJSON *root = cJSON_Parse(raw);
-    free(raw);
     if (root == NULL) {
         const char *pos = cJSON_GetErrorPtr();
         set_err(err_msg, err_msg_len, "JSON syntax error near '%.16s'", pos ? pos : "?");
+        free(raw);
         return ESP_ERR_INVALID_ARG;
     }
+    free(raw);
 
     memset(out_config, 0, sizeof(*out_config));
     out_config->cols = 5;
@@ -323,10 +408,10 @@ esp_err_t td_config_load(const char *config_path, td_config_t *out_config,
     if (cJSON_IsObject(grid)) {
         const cJSON *cols = cJSON_GetObjectItemCaseSensitive(grid, "cols");
         const cJSON *rows = cJSON_GetObjectItemCaseSensitive(grid, "rows");
-        if (cJSON_IsNumber(cols) && cols->valueint > 0 && cols->valueint <= 8) {
+        if (cJSON_IsNumber(cols) && cols->valueint > 0 && cols->valueint <= 12) {
             out_config->cols = (uint8_t)cols->valueint;
         }
-        if (cJSON_IsNumber(rows) && rows->valueint > 0 && rows->valueint <= 5) {
+        if (cJSON_IsNumber(rows) && rows->valueint > 0 && rows->valueint <= 6) {
             out_config->rows = (uint8_t)rows->valueint;
         }
     }
@@ -345,7 +430,8 @@ esp_err_t td_config_load(const char *config_path, td_config_t *out_config,
             cJSON_Delete(root);
             return ESP_ERR_INVALID_SIZE;
         }
-        if (!parse_page(page, &out_config->pages[out_config->page_count], err_msg, err_msg_len)) {
+        if (!parse_page(page, &out_config->pages[out_config->page_count],
+                        out_config->cols, out_config->rows, err_msg, err_msg_len)) {
             cJSON_Delete(root);
             return ESP_ERR_INVALID_ARG;
         }

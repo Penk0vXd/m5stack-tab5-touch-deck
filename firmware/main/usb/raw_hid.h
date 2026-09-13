@@ -47,7 +47,8 @@ typedef void (*td_telemetry_cb_t)(const td_telemetry_t *telemetry);
 typedef void (*td_profile_cb_t)(const char *profile);
 
 /* Config upload events, forwarded to cfg/config_rx. */
-typedef void (*td_config_rx_cb_t)(uint8_t msg_type, const uint8_t *payload, uint8_t len);
+typedef void (*td_config_rx_cb_t)(uint8_t msg_type, uint8_t seq,
+                                  const uint8_t *payload, uint8_t len);
 void td_raw_hid_set_config_rx(td_config_rx_cb_t callback);
 
 /* Replies to a config upload so the agent knows whether it took. */

@@ -18,22 +18,25 @@ telemetry_interval = 2.0
 profile_interval = 1.0
 # Reconnect delay when the device disappears.
 reconnect_delay = 1.5
+# Link probe interval. The device echoes probes; the agent never echoes replies.
+heartbeat_interval = 3.0
 
 # Commands the device may run. Key is the name the device sends.
 # argv is passed to subprocess without a shell, so no shell metacharacters,
 # no pipes, no redirection. Add "cwd" when the command needs a directory.
 
-[commands.docker_up]
-argv = ["docker", "compose", "up", "-d"]
-cwd = "C:/projects/my-stack"
+[commands.run_tests]
+argv = ["C:/path/to/tab5-touch-deck/.venv/Scripts/python.exe", "-m", "unittest", "discover", "-s", "host-agent/tests", "-v"]
+cwd = "C:/path/to/tab5-touch-deck"
 
-[commands.docker_down]
-argv = ["docker", "compose", "down"]
-cwd = "C:/projects/my-stack"
+[commands.open_project]
+argv = ["explorer.exe", "C:/path/to/tab5-touch-deck"]
+detach = true
 
 [commands.git_status]
 argv = ["git", "status", "--short"]
-cwd = "C:/projects/my-stack"
+cwd = "C:/path/to/tab5-touch-deck"
 
 [commands.open_notes]
-argv = ["notepad.exe", "C:/Users/Public/notes.txt"]
+argv = ["notepad.exe"]
+detach = true

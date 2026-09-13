@@ -3,6 +3,7 @@ REM Starts the Touch Deck host agent. Does not touch the firmware -
 REM use deploy.bat first if Tab5 isn't running the app yet.
 setlocal
 set "AGENT_DIR=%~dp0..\host-agent"
+set "PYTHON_EXE=%~dp0..\.venv\Scripts\python.exe"
 
 REM tasklist filters BY window title but does not print it in the output
 REM table, so match on the Image Name column (cmd.exe) instead.
@@ -17,8 +18,15 @@ if not exist "%AGENT_DIR%\config.toml" (
     copy /Y "%AGENT_DIR%\config.example.toml" "%AGENT_DIR%\config.toml" >nul
 )
 
+if not exist "%PYTHON_EXE%" (
+    echo Project Python environment is missing.
+    echo Run: python -m venv .venv
+    echo Then install: .venv\Scripts\python.exe -m pip install -r host-agent\requirements.txt
+    goto :end
+)
+
 echo Starting Touch Deck host agent...
-start "TouchDeckAgent" /MIN cmd /c "cd /d "%AGENT_DIR%" && python agent.py > agent.log 2>&1"
+start "TouchDeckAgent" /MIN cmd /c ""%PYTHON_EXE%" "%AGENT_DIR%\agent.py" > "%AGENT_DIR%\agent.log" 2>&1"
 echo Started. Log: %AGENT_DIR%\agent.log
 
 :end

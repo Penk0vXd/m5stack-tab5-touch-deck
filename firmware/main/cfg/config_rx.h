@@ -13,8 +13,8 @@
 extern "C" {
 #endif
 
-/* Called after a successful upload; the UI reloads with the new config. */
-typedef void (*td_config_applied_cb_t)(void);
+/* Called after a successful file swap. ACK is sent only if the UI reloads it. */
+typedef esp_err_t (*td_config_applied_cb_t)(void);
 
 esp_err_t td_config_rx_start(const char *config_path, td_config_applied_cb_t on_applied);
 

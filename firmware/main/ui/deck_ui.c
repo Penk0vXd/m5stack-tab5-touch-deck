@@ -7,6 +7,8 @@
 
 #include "bsp/esp-bsp.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
 #include "lvgl.h"
 
 #include "ui/feedback.h"
@@ -17,13 +19,15 @@
 
 static const char *TAG = "td_ui";
 
-#define TD_HEADER_H 66
-#define TD_FOOTER_H 44
-#define TD_GAP      14
+#define TD_HEADER_H 64
+#define TD_FEEDBACK_H 32
+#define TD_NAV_H    66
+#define TD_GAP      12
 
 /* Landscape geometry: the panel is 720x1280 portrait, rotated by 90 degrees. */
 #define TD_SCREEN_W BSP_LCD_V_RES
 #define TD_SCREEN_H BSP_LCD_H_RES
+#define TD_CONTENT_H (TD_SCREEN_H - TD_HEADER_H - TD_FEEDBACK_H - TD_NAV_H - 2 * TD_GAP)
 
 typedef struct {
     const td_button_t *def;
@@ -31,6 +35,7 @@ typedef struct {
     lv_obj_t *value_bar;    /* telemetry tiles */
     lv_color_t accent;
     int16_t last_slider_value;
+    bool long_press_handled;
 } td_button_ctx_t;
 
 static const td_config_t *s_config;
@@ -41,17 +46,19 @@ static int s_page_index;
 static lv_obj_t *s_page_label;
 static lv_obj_t *s_usb_pill;
 static lv_obj_t *s_agent_pill;
-static lv_obj_t *s_dots;
+static lv_obj_t *s_nav;
 static lv_obj_t *s_toast_label;
 static lv_obj_t *s_grid;
 static td_button_ctx_t s_button_ctx[TD_CFG_MAX_BUTTONS];
 
 /* Written from the USB task, read by the LVGL timer. */
 static _Atomic uint32_t s_telemetry_packed;  /* cpu | mem<<8 | disk<<16 | valid<<24 */
+static _Atomic int64_t s_telemetry_received_us;
 static _Atomic uint32_t s_ack_packed;        /* status | seq<<8 | counter<<16 */
 static char s_ack_detail[32];
 static _Atomic uint32_t s_profile_counter;
 static char s_profile[64];
+static portMUX_TYPE s_state_mux = portMUX_INITIALIZER_UNLOCKED;
 static bool s_dimmed;
 static _Atomic uint32_t s_gesture_packed;  /* gesture | counter<<8 */
 
@@ -60,6 +67,30 @@ static void build_page(int page_index);
 static lv_color_t page_accent(int page_index)
 {
     return td_theme_accent((uint8_t)page_index);
+}
+
+static const char *icon_symbol(const char *name)
+{
+    if (name == NULL || name[0] == '\0') return "";
+    if (strcmp(name, "home") == 0) return LV_SYMBOL_HOME;
+    if (strcmp(name, "work") == 0 || strcmp(name, "list") == 0) return LV_SYMBOL_LIST;
+    if (strcmp(name, "media") == 0 || strcmp(name, "audio") == 0) return LV_SYMBOL_AUDIO;
+    if (strcmp(name, "settings") == 0) return LV_SYMBOL_SETTINGS;
+    if (strcmp(name, "terminal") == 0 || strcmp(name, "keyboard") == 0) return LV_SYMBOL_KEYBOARD;
+    if (strcmp(name, "copy") == 0) return LV_SYMBOL_COPY;
+    if (strcmp(name, "paste") == 0) return LV_SYMBOL_PASTE;
+    if (strcmp(name, "undo") == 0 || strcmp(name, "switch") == 0) return LV_SYMBOL_REFRESH;
+    if (strcmp(name, "snip") == 0) return LV_SYMBOL_CUT;
+    if (strcmp(name, "notes") == 0 || strcmp(name, "file") == 0) return LV_SYMBOL_FILE;
+    if (strcmp(name, "save") == 0) return LV_SYMBOL_SAVE;
+    if (strcmp(name, "play") == 0) return LV_SYMBOL_PLAY;
+    if (strcmp(name, "next") == 0) return LV_SYMBOL_NEXT;
+    if (strcmp(name, "back") == 0) return LV_SYMBOL_PREV;
+    if (strcmp(name, "power") == 0 || strcmp(name, "lock") == 0) return LV_SYMBOL_POWER;
+    if (strcmp(name, "edit") == 0) return LV_SYMBOL_EDIT;
+    if (strcmp(name, "upload") == 0) return LV_SYMBOL_UPLOAD;
+    if (strcmp(name, "download") == 0) return LV_SYMBOL_DOWNLOAD;
+    return "";
 }
 
 /* ------------------------------------------------------------------ actions */
@@ -83,18 +114,35 @@ static void run_action(const td_action_t *action, const td_macro_t *macro)
 {
     switch (action->type) {
     case TD_ACTION_HID_KEYS:
-        td_hid_send_chord(action->modifiers, action->keys, action->key_count);
+        if (td_hid_send_chord(action->modifiers, action->keys, action->key_count) != ESP_OK) {
+            toast("keyboard queue unavailable", td_theme_danger());
+        }
         break;
     case TD_ACTION_HID_CONSUMER:
-        td_hid_send_consumer(action->consumer_usage);
+        if (td_hid_send_consumer(action->consumer_usage) != ESP_OK) {
+            toast("media queue unavailable", td_theme_danger());
+        }
         break;
     case TD_ACTION_TEXT:
-        td_hid_send_text(action->text);
+        if (td_hid_send_text(action->text) != ESP_OK) {
+            toast("text queue unavailable", td_theme_danger());
+        }
         break;
     case TD_ACTION_DELAY: {
         td_hid_job_t job = {.type = TD_JOB_DELAY};
         job.delay.ms = action->delay_ms;
-        td_hid_submit(&job);
+        if (td_hid_submit(&job) != ESP_OK) {
+            toast("macro queue unavailable", td_theme_danger());
+        }
+        break;
+    }
+    case TD_ACTION_BRIGHTNESS: {
+        lv_display_trigger_activity(NULL);
+        bsp_display_brightness_set(action->brightness);
+        s_dimmed = false;
+        char msg[32];
+        snprintf(msg, sizeof(msg), "brightness %u%%", action->brightness);
+        toast(msg, td_theme_text_dim());
         break;
     }
     case TD_ACTION_MACRO:
@@ -136,11 +184,21 @@ static void button_event_cb(lv_event_t *event)
 
     const lv_event_code_t code = lv_event_get_code(event);
     if (code == LV_EVENT_LONG_PRESSED && ctx->def->has_long_press) {
+        ctx->long_press_handled = true;
         td_feedback_click();
-        run_action(&ctx->def->long_press, NULL);
+        run_action(&ctx->def->long_press, &ctx->def->long_press_macro);
         return;
     }
     if (code == LV_EVENT_CLICKED) {
+        if (ctx->long_press_handled) {
+            ctx->long_press_handled = false;
+            return;
+        }
+        if (ctx->def->action.type == TD_ACTION_NONE && ctx->def->has_long_press) {
+            td_feedback_error();
+            toast("hold to run", td_theme_warn());
+            return;
+        }
         if (td_hid_is_connected()) {
             td_feedback_click();
         } else {
@@ -180,7 +238,10 @@ static void slider_event_cb(lv_event_t *event)
 
     const uint16_t usage = (steps > 0) ? ctx->def->slider.up_usage : ctx->def->slider.down_usage;
     for (int i = 0; i < abs(steps); i++) {
-        td_hid_send_consumer(usage);
+        if (td_hid_send_consumer(usage) != ESP_OK) {
+            toast("volume queue unavailable", td_theme_danger());
+            break;
+        }
     }
     ctx->last_slider_value = (int16_t)(ctx->last_slider_value + steps * step);
 }
@@ -195,6 +256,21 @@ static lv_obj_t *make_card(lv_color_t accent, int32_t w, int32_t h, bool interac
     td_theme_style_card(card, accent, interactive);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
     return card;
+}
+
+static void position_card(lv_obj_t *card, const td_button_t *def, uint8_t index,
+                          uint8_t cols, uint8_t rows)
+{
+    const uint8_t col = def->has_position ? def->col : index % cols;
+    const uint8_t row = def->has_position ? def->row : index / cols;
+    const uint8_t col_span = def->has_position ? def->col_span : 1;
+    const uint8_t row_span = def->has_position ? def->row_span : 1;
+    const int32_t content_w = TD_SCREEN_W - 2 * TD_GAP;
+    const int32_t cell_w = (content_w - (cols - 1) * TD_GAP) / cols;
+    const int32_t cell_h = (TD_CONTENT_H - (rows - 1) * TD_GAP) / rows;
+    lv_obj_set_pos(card, col * (cell_w + TD_GAP), row * (cell_h + TD_GAP));
+    lv_obj_set_size(card, col_span * cell_w + (col_span - 1) * TD_GAP,
+                    row_span * cell_h + (row_span - 1) * TD_GAP);
 }
 
 static void build_tile(td_button_ctx_t *ctx, lv_obj_t *card)
@@ -251,18 +327,33 @@ static void build_slider(td_button_ctx_t *ctx, lv_obj_t *card, int32_t card_w)
     lv_obj_add_event_cb(slider, slider_event_cb, LV_EVENT_VALUE_CHANGED, ctx);
 }
 
-static void build_dots(int page_count, int active)
+static void nav_event_cb(lv_event_t *event)
 {
-    lv_obj_clean(s_dots);
-    for (int i = 0; i < page_count; i++) {
-        lv_obj_t *dot = lv_obj_create(s_dots);
-        lv_obj_remove_style_all(dot);
-        const bool is_active = (i == active);
-        lv_obj_set_size(dot, is_active ? 26 : 10, 10);
-        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-        lv_obj_set_style_bg_color(dot, is_active ? page_accent(i) : td_theme_border(),
-                                  LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
+    build_page((int)(intptr_t)lv_event_get_user_data(event));
+}
+
+static void build_nav(int active)
+{
+    lv_obj_clean(s_nav);
+    const int visible = s_config->page_count > 4 ? 4 : s_config->page_count;
+    for (int i = 0; i < visible; i++) {
+        const td_page_t *page = &s_config->pages[i];
+        lv_obj_t *item = lv_button_create(s_nav);
+        lv_obj_remove_style_all(item);
+        lv_obj_set_height(item, TD_NAV_H - 12);
+        lv_obj_set_flex_grow(item, 1);
+        lv_obj_set_style_radius(item, 12, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(item, page_accent(i), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(item, i == active ? LV_OPA_20 : LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_text_color(item, i == active ? page_accent(i) : td_theme_text_dim(),
+                                    LV_PART_MAIN);
+        lv_obj_add_event_cb(item, nav_event_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+
+        lv_obj_t *label = lv_label_create(item);
+        lv_label_set_text_fmt(label, "%s  %s", icon_symbol(page->icon), page->title);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_20, LV_PART_MAIN);
+        lv_obj_center(label);
+        lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
     }
 }
 
@@ -282,12 +373,10 @@ static void build_page(int page_index)
 
     lv_label_set_text(s_page_label, page->title);
     lv_obj_set_style_text_color(s_page_label, accent, LV_PART_MAIN);
-    build_dots(s_config->page_count, page_index);
+    build_nav(page_index);
 
-    const int32_t cols = s_config->cols;
-    const int32_t rows = s_config->rows;
-    const int32_t btn_w = (TD_SCREEN_W - (cols + 1) * TD_GAP) / cols;
-    const int32_t btn_h = (TD_SCREEN_H - TD_HEADER_H - TD_FOOTER_H - (rows + 1) * TD_GAP) / rows;
+    const uint8_t cols = page->cols != 0 ? page->cols : s_config->cols;
+    const uint8_t rows = page->rows != 0 ? page->rows : s_config->rows;
 
     for (uint8_t i = 0; i < page->button_count && i < TD_CFG_MAX_BUTTONS; i++) {
         const td_button_t *def = &page->buttons[i];
@@ -296,28 +385,64 @@ static void build_page(int page_index)
         ctx->accent = td_theme_accent_by_name(def->color, i);
 
         if (def->slider.enabled) {
-            lv_obj_t *card = make_card(ctx->accent, btn_w, btn_h, false);
+            lv_obj_t *card = make_card(ctx->accent, 1, 1, false);
+            position_card(card, def, i, cols, rows);
             ctx->last_slider_value = 50;
-            build_slider(ctx, card, btn_w);
+            build_slider(ctx, card, lv_obj_get_width(card));
             continue;
         }
 
         if (def->tile[0] != '\0') {
-            lv_obj_t *card = make_card(ctx->accent, btn_w, btn_h, false);
+            lv_obj_t *card = make_card(ctx->accent, 1, 1, false);
+            position_card(card, def, i, cols, rows);
             build_tile(ctx, card);
             continue;
         }
 
-        lv_obj_t *card = make_card(ctx->accent, btn_w, btn_h, true);
+        lv_obj_t *card = make_card(ctx->accent, 1, 1, true);
+        position_card(card, def, i, cols, rows);
+        const int32_t card_w = lv_obj_get_width(card);
+        const bool compact = strcmp(def->variant, "compact") == 0 ||
+                             strcmp(def->variant, "utility") == 0;
+        if (strcmp(def->variant, "utility") == 0) {
+            lv_obj_set_style_bg_color(card, td_theme_surface_deep(), LV_PART_MAIN);
+            lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
+        }
         lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+        const char *symbol = icon_symbol(def->icon);
+        if (symbol[0] != '\0') {
+            lv_obj_t *icon = lv_label_create(card);
+            lv_label_set_text(icon, symbol);
+            lv_obj_set_style_text_font(icon, compact ? &lv_font_montserrat_24 : &lv_font_montserrat_36,
+                                       LV_PART_MAIN);
+            lv_obj_align(icon, compact ? LV_ALIGN_LEFT_MID : LV_ALIGN_TOP_LEFT,
+                         compact ? 8 : 6, compact ? 0 : 6);
+            lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
+        }
         lv_obj_t *label = lv_label_create(card);
         lv_label_set_text(label, def->label);
-        lv_obj_set_style_text_font(label, &lv_font_montserrat_28, LV_PART_MAIN);
+        lv_obj_set_style_text_font(label, compact ? &lv_font_montserrat_20 : &lv_font_montserrat_28,
+                                   LV_PART_MAIN);
         lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(label, btn_w - 24);
-        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_center(label);
+        lv_obj_set_width(label, card_w - (compact && symbol[0] != '\0' ? 76 : 24));
+        lv_obj_set_style_text_align(label, compact ? LV_TEXT_ALIGN_LEFT : LV_TEXT_ALIGN_CENTER,
+                                    LV_PART_MAIN);
+        if (compact) {
+            lv_obj_align(label, LV_ALIGN_LEFT_MID, symbol[0] != '\0' ? 58 : 8, -10);
+        } else {
+            lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, def->hint[0] != '\0' ? -28 : -12);
+        }
         lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
+
+        if (def->hint[0] != '\0') {
+            lv_obj_t *hint = lv_label_create(card);
+            lv_label_set_text(hint, def->hint);
+            lv_obj_set_style_text_font(hint, &lv_font_montserrat_20, LV_PART_MAIN);
+            lv_obj_set_style_text_color(hint, td_theme_text_dim(), LV_PART_MAIN);
+            lv_obj_align(hint, compact ? LV_ALIGN_BOTTOM_LEFT : LV_ALIGN_BOTTOM_MID,
+                         compact ? (symbol[0] != '\0' ? 58 : 8) : 0, -4);
+            lv_obj_clear_flag(hint, LV_OBJ_FLAG_CLICKABLE);
+        }
 
         /* A long-press alternative is invisible otherwise, so mark it. */
         if (def->has_long_press) {
@@ -341,9 +466,9 @@ static void build_page(int page_index)
 static void refresh_tiles(void)
 {
     const uint32_t packed = atomic_load(&s_telemetry_packed);
-    if ((packed >> 24) == 0) {
-        return;
-    }
+    const int64_t received_us = atomic_load(&s_telemetry_received_us);
+    const bool fresh = (packed >> 24) != 0 && received_us != 0 &&
+                       esp_timer_get_time() - received_us < 5 * 1000 * 1000;
     const uint8_t values[3] = {
         (uint8_t)(packed & 0xFF),
         (uint8_t)((packed >> 8) & 0xFF),
@@ -353,6 +478,14 @@ static void refresh_tiles(void)
     for (size_t i = 0; i < TD_CFG_MAX_BUTTONS; i++) {
         td_button_ctx_t *ctx = &s_button_ctx[i];
         if (ctx->value_label == NULL || ctx->def == NULL) {
+            continue;
+        }
+        if (!fresh) {
+            lv_label_set_text(ctx->value_label, "--");
+            lv_obj_set_style_text_color(ctx->value_label, td_theme_text_dim(), LV_PART_MAIN);
+            if (ctx->value_bar != NULL) {
+                lv_bar_set_value(ctx->value_bar, 0, LV_ANIM_OFF);
+            }
             continue;
         }
         int value = -1;
@@ -381,16 +514,21 @@ static void refresh_tiles(void)
 static void refresh_ack(void)
 {
     static uint32_t last_counter;
+    char detail[sizeof(s_ack_detail)];
+    portENTER_CRITICAL(&s_state_mux);
     const uint32_t packed = atomic_load(&s_ack_packed);
     const uint32_t counter = packed >> 16;
     if (counter == last_counter) {
+        portEXIT_CRITICAL(&s_state_mux);
         return;
     }
     last_counter = counter;
+    strlcpy(detail, s_ack_detail, sizeof(detail));
+    portEXIT_CRITICAL(&s_state_mux);
 
     const uint8_t status = packed & 0xFF;
     char msg[64];
-    snprintf(msg, sizeof(msg), "%s %s", status == TD_ACK_OK ? "ok" : "failed", s_ack_detail);
+    snprintf(msg, sizeof(msg), "%s %s", status == TD_ACK_OK ? "ok" : "failed", detail);
     toast(msg, status == TD_ACK_OK ? td_theme_ok() : td_theme_danger());
 }
 
@@ -409,19 +547,24 @@ static bool title_contains(const char *title, const char *pattern_lower)
 static void refresh_profile(void)
 {
     static uint32_t last_counter;
+    char profile[sizeof(s_profile)];
+    portENTER_CRITICAL(&s_state_mux);
     const uint32_t counter = atomic_load(&s_profile_counter);
     if (counter == last_counter || s_config == NULL) {
+        portEXIT_CRITICAL(&s_state_mux);
         return;
     }
     last_counter = counter;
+    strlcpy(profile, s_profile, sizeof(profile));
+    portEXIT_CRITICAL(&s_state_mux);
 
     for (uint8_t page = 0; page < s_config->page_count; page++) {
         for (uint8_t m = 0; m < s_config->pages[page].match_count; m++) {
-            if (!title_contains(s_profile, s_config->pages[page].match[m])) {
+            if (!title_contains(profile, s_config->pages[page].match[m])) {
                 continue;
             }
             if (page != s_page_index) {
-                ESP_LOGI(TAG, "profile '%s' -> page '%s'", s_profile, s_config->pages[page].id);
+                ESP_LOGI(TAG, "profile '%s' -> page '%s'", profile, s_config->pages[page].id);
                 build_page(page);
             }
             return;
@@ -447,6 +590,7 @@ static void refresh_gesture(void)
         build_page((s_page_index + s_config->page_count - 1) % s_config->page_count);
         break;
     case TD_GESTURE_WAKE:
+        lv_display_trigger_activity(NULL);
         if (s_dimmed) {
             s_dimmed = false;
             bsp_display_brightness_set(s_config->brightness);
@@ -568,6 +712,7 @@ void td_ui_on_telemetry(const td_telemetry_t *telemetry)
                             ((uint32_t)telemetry->mem_percent << 8) |
                             ((uint32_t)telemetry->disk_percent << 16) | (1u << 24);
     atomic_store(&s_telemetry_packed, packed);
+    atomic_store(&s_telemetry_received_us, esp_timer_get_time());
 }
 
 void td_ui_on_gesture(td_gesture_t gesture)
@@ -581,46 +726,57 @@ void td_ui_on_profile(const char *profile)
     if (profile == NULL) {
         return;
     }
+    portENTER_CRITICAL(&s_state_mux);
     strlcpy(s_profile, profile, sizeof(s_profile));
     atomic_fetch_add(&s_profile_counter, 1);
+    portEXIT_CRITICAL(&s_state_mux);
 }
 
 void td_ui_on_ack(uint8_t seq, uint8_t status, const char *detail)
 {
+    portENTER_CRITICAL(&s_state_mux);
     strlcpy(s_ack_detail, detail != NULL ? detail : "", sizeof(s_ack_detail));
     const uint32_t counter = (atomic_load(&s_ack_packed) >> 16) + 1;
     atomic_store(&s_ack_packed, (uint32_t)status | ((uint32_t)seq << 8) | (counter << 16));
+    portEXIT_CRITICAL(&s_state_mux);
 }
 
 esp_err_t td_ui_reload_from_file(const char *config_path)
 {
     char err[64] = {0};
+    td_config_t *candidate = td_config_alloc();
+    if (candidate == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
 
-    if (s_reloaded == NULL) {
-        s_reloaded = td_config_alloc();
-        if (s_reloaded == NULL) {
-            return ESP_ERR_NO_MEM;
+    esp_err_t result = td_config_load(config_path, candidate, err, sizeof(err));
+    if (result != ESP_OK) {
+        char msg[80];
+        snprintf(msg, sizeof(msg), "reload failed: %s", err);
+        if (bsp_display_lock(1000)) {
+            toast(msg, td_theme_danger());
+            bsp_display_unlock();
         }
+        td_config_free(candidate);
+        return result;
     }
 
     if (!bsp_display_lock(1000)) {
+        td_config_free(candidate);
         return ESP_ERR_TIMEOUT;
     }
 
-    esp_err_t result = td_config_load(config_path, s_reloaded, err, sizeof(err));
-    if (result == ESP_OK) {
-        s_config = s_reloaded;
-        build_page(0);
-        bsp_display_brightness_set(s_config->brightness);
-        toast("config reloaded", td_theme_ok());
-    } else {
-        char msg[80];
-        snprintf(msg, sizeof(msg), "reload failed: %s", err);
-        toast(msg, td_theme_danger());
-    }
-
+    td_config_t *previous_reload = s_reloaded;
+    s_reloaded = candidate;
+    s_config = candidate;
+    build_page(0);
+    bsp_display_brightness_set(s_config->brightness);
+    toast("config reloaded", td_theme_ok());
     bsp_display_unlock();
-    return result;
+
+    /* build_page no longer keeps pointers into the previous uploaded model. */
+    td_config_free(previous_reload);
+    return ESP_OK;
 }
 
 static lv_obj_t *create_pill(lv_obj_t *parent)
@@ -652,7 +808,7 @@ esp_err_t td_ui_start(const td_config_t *config, const char *load_error)
     lv_obj_set_style_pad_all(screen, TD_GAP, LV_PART_MAIN);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Header: page title on the left, status and page dots on the right. */
+    /* Header: page title on the left and explicit connectivity on the right. */
     lv_obj_t *header = lv_obj_create(screen);
     lv_obj_remove_style_all(header);
     lv_obj_set_size(header, LV_PCT(100), TD_HEADER_H - TD_GAP);
@@ -677,20 +833,11 @@ esp_err_t td_ui_start(const td_config_t *config, const char *load_error)
     s_usb_pill = create_pill(status_row);
     s_agent_pill = create_pill(status_row);
 
-    s_dots = lv_obj_create(status_row);
-    lv_obj_remove_style_all(s_dots);
-    lv_obj_set_size(s_dots, LV_SIZE_CONTENT, 14);
-    lv_obj_set_flex_flow(s_dots, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(s_dots, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(s_dots, 6, LV_PART_MAIN);
-    lv_obj_clear_flag(s_dots, LV_OBJ_FLAG_SCROLLABLE);
-
-    /* Footer: one line of feedback for agent replies and errors. */
+    /* One line of feedback remains visible immediately above navigation. */
     s_toast_label = lv_label_create(screen);
     lv_obj_set_style_text_font(s_toast_label, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_toast_label, td_theme_text_dim(), LV_PART_MAIN);
-    lv_obj_align(s_toast_label, LV_ALIGN_BOTTOM_LEFT, 2, 0);
+    lv_obj_align(s_toast_label, LV_ALIGN_BOTTOM_LEFT, 2, -(TD_NAV_H + 4));
     lv_label_set_text(s_toast_label, "");
     if (config == NULL && load_error != NULL) {
         toast(load_error, td_theme_danger());
@@ -698,14 +845,22 @@ esp_err_t td_ui_start(const td_config_t *config, const char *load_error)
 
     s_grid = lv_obj_create(screen);
     lv_obj_remove_style_all(s_grid);
-    lv_obj_set_size(s_grid, LV_PCT(100), TD_SCREEN_H - TD_HEADER_H - TD_FOOTER_H);
-    lv_obj_align(s_grid, LV_ALIGN_CENTER, 0, 4);
-    lv_obj_set_flex_flow(s_grid, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(s_grid, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_SPACE_EVENLY);
-    lv_obj_set_style_pad_row(s_grid, TD_GAP, LV_PART_MAIN);
-    lv_obj_set_style_pad_column(s_grid, TD_GAP, LV_PART_MAIN);
+    lv_obj_set_size(s_grid, TD_SCREEN_W - 2 * TD_GAP, TD_CONTENT_H);
+    lv_obj_align(s_grid, LV_ALIGN_TOP_MID, 0, TD_HEADER_H);
     lv_obj_clear_flag(s_grid, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_nav = lv_obj_create(screen);
+    lv_obj_remove_style_all(s_nav);
+    lv_obj_set_size(s_nav, LV_PCT(100), TD_NAV_H);
+    lv_obj_align(s_nav, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_flex_flow(s_nav, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_nav, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(s_nav, 8, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_nav, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_side(s_nav, LV_BORDER_SIDE_TOP, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_nav, td_theme_border(), LV_PART_MAIN);
+    lv_obj_clear_flag(s_nav, LV_OBJ_FLAG_SCROLLABLE);
 
     build_page(0);
     bsp_display_brightness_set(s_config->brightness);

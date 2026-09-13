@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Touch Deck Studio</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">M5Stack Tab5</p>
+      <h1>Touch Deck Studio</h1>
+    </div>
+    <div class="toolbar">
+      <button id="openButton" class="button secondary">Open JSON</button>
+      <input id="fileInput" type="file" accept="application/json,.json" hidden>
+      <button id="downloadButton" class="button primary">Download config</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="panel pages-panel">
+      <div class="panel-heading"><h2>Pages</h2><button id="addPage" class="text-button">+ Add</button></div>
+      <div id="pageList" class="page-list"></div>
+      <div class="tip"><strong>Tip</strong><span>Drag cards in the preview to reposition them.</span></div>
+    </aside>
+
+    <section class="canvas-column">
+      <div class="canvas-meta">
+        <span id="pageName">Home</span>
+        <span id="validationState" class="state ok">Layout valid</span>
+      </div>
+      <div class="device-shell">
+        <div id="devicePreview" class="device-preview">
+          <div class="device-header"><strong id="previewTitle">Home</strong><div><span class="status online">USB linked</span><span class="status online">Agent online</span></div></div>
+          <div id="widgetGrid" class="widget-grid"></div>
+          <div class="feedback">Ready</div>
+          <nav id="previewNav" class="preview-nav"></nav>
+        </div>
+      </div>
+      <p class="canvas-help">Preview is proportional to the 1280 × 720 display. Changes stay local until you download and upload the JSON.</p>
+    </section>
+
+    <aside class="panel inspector">
+      <div class="panel-heading"><h2>Inspector</h2><button id="addWidget" class="text-button">+ Widget</button></div>
+      <div id="emptyInspector" class="empty">Select a card to edit it.</div>
+      <form id="widgetForm" hidden>
+        <label>Label<input name="label" maxlength="23"></label>
+        <label>Hint<input name="hint" maxlength="23"></label>
+        <div class="two-col">
+          <label>Icon<select name="icon"></select></label>
+          <label>Color<select name="color"></select></label>
+        </div>
+        <label>Style<select name="variant"><option value="">Primary</option><option value="compact">Compact</option><option value="utility">Utility</option></select></label>
+        <div class="four-col">
+          <label>Col<input name="col" type="number" min="0" max="11"></label>
+          <label>Row<input name="row" type="number" min="0" max="3"></label>
+          <label>Width<input name="col_span" type="number" min="1" max="12"></label>
+          <label>Height<input name="row_span" type="number" min="1" max="4"></label>
+        </div>
+        <label>Action JSON<textarea name="action" rows="7" spellcheck="false"></textarea></label>
+        <label>Long press JSON<textarea name="long_press" rows="5" spellcheck="false"></textarea></label>
+        <p id="formError" class="form-error"></p>
+        <div class="form-actions"><button id="duplicateWidget" type="button" class="button secondary">Duplicate</button><button id="deleteWidget" type="button" class="button danger">Delete</button></div>
+      </form>
+    </aside>
+  </main>
+
+  <footer class="footer"><span id="fileStatus">Loaded project configuration</span><code>python -m http.server 8080</code></footer>
+  <script src="app.js"></script>
+</body>
+</html>

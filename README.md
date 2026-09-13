@@ -2,14 +2,15 @@
 
 Програмируем USB macro pad за **M5Stack Tab5 (ESP32-P4 + ESP32-C6)**. Сензорният екран изпраща клавишни комбинации и медийни команди към компютър. Допълнителен Python агент изпълнява предварително разрешени локални команди и връща CPU/RAM/disk телеметрия.
 
-ESP32-P4 изпълнява приложението. ESP32-C6, Wi-Fi и Bluetooth не се използват. Не са необходими облак, API ключове или локален HTTP сървър.
+ESP32-P4 изпълнява приложението. ESP32-C6, Wi-Fi и Bluetooth не се използват. Не са необходими облак или API ключове; малък локален HTTP сървър се ползва само ако отворите визуалния редактор.
 
 ## Основни функции
 
-- LVGL landscape интерфейс 1280×720 с JSON страници, бутони, цветове и telemetry tiles.
+- LVGL landscape интерфейс 1280×720 с асиметрични JSON layouts, икони, подсказки и telemetry tiles.
 - USB клавиатура и consumer control без агент; ASCII текст и кратки макроси.
 - Python агент с whitelist от имена към конкретни `argv` команди.
-- Home, Git и Media страници; автоматично превключване по window title под Windows.
+- Home, Work, Media и System страници с долна навигация; автоматично превключване по window title под Windows.
+- Локален визуален редактор с preview, Inspector, drag-and-drop и JSON export.
 - Относителен volume slider, звуков feedback, BMI270 жестове и затъмняване.
 - SPIFFS конфигурация и прехвърляне на JSON по raw HID без firmware flash.
 
@@ -40,10 +41,17 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r host-agent\requirements.txt
 Copy-Item host-agent\config.example.toml host-agent\config.toml
 notepad host-agent\config.toml
-notepad storage\config.json
+scripts\editor.bat
 ```
 
-Попълнете реалните `cwd` и разрешени команди. Прочетете [USAGE](docs/USAGE.md) преди Git/Docker действия. В **ESP-IDF 5.5.5 PowerShell** от корена:
+Скриптът отваря `http://127.0.0.1:8080/editor/`. Редактирайте визуално и
+свалете `config.json`. За директен upload без firmware rebuild:
+
+```powershell
+.\.venv\Scripts\python.exe host-agent\agent.py --push-config storage\config.json
+```
+
+Попълнете реалните `cwd` и разрешени команди. Прочетете [USAGE](docs/USAGE.md) преди Git или project действия. В **ESP-IDF 5.5.5 PowerShell** от корена:
 
 ```powershell
 cd firmware
@@ -84,6 +92,5 @@ idf.py -p COM5 flash
 | [CHANGELOG](docs/CHANGELOG.md) | Промени |
 | [SECURITY](docs/SECURITY.md) | Secrets review и trust boundaries |
 | [VALIDATION](docs/VALIDATION.md) | Изпълнени проверки |
-| [Каталог с идеи](docs/TAB5_PROJECT_IDEAS.md) | Исторически контекст, не готови функции |
 
 Няма главен LICENSE за application кода. BSP има собствен лиценз; условията за разпространение на целия проект трябва да бъдат уточнени.

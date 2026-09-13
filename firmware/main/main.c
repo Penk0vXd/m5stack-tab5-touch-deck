@@ -4,7 +4,9 @@
  * Boot order matters: display first so the user sees something while USB
  * enumerates, then storage and config, then TinyUSB, then the UI.
  */
+#include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "bsp/esp-bsp.h"
 #include "esp_log.h"
@@ -23,6 +25,7 @@
 static const char *TAG = "touchdeck";
 
 #define TD_CONFIG_PATH CONFIG_BSP_SPIFFS_MOUNT_POINT "/config.json"
+#define TD_CONFIG_BACKUP_PATH TD_CONFIG_PATH ".bak"
 
 static td_config_t *s_config;
 static char s_config_error[96];
@@ -92,9 +95,9 @@ static void on_profile(const char *profile)
     td_ui_on_profile(profile);
 }
 
-static void on_config_applied(void)
+static esp_err_t on_config_applied(void)
 {
-    td_ui_reload_from_file(TD_CONFIG_PATH);
+    return td_ui_reload_from_file(TD_CONFIG_PATH);
 }
 
 static const td_config_t *load_config(void)
@@ -114,12 +117,21 @@ static const td_config_t *load_config(void)
     }
 
     err = td_config_load(TD_CONFIG_PATH, s_config, s_config_error, sizeof(s_config_error));
+    if (err != ESP_OK && access(TD_CONFIG_BACKUP_PATH, F_OK) == 0) {
+        ESP_LOGW(TAG, "primary config failed; restoring upload backup");
+        unlink(TD_CONFIG_PATH);
+        if (rename(TD_CONFIG_BACKUP_PATH, TD_CONFIG_PATH) == 0) {
+            err = td_config_load(TD_CONFIG_PATH, s_config, s_config_error,
+                                 sizeof(s_config_error));
+        }
+    }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "config load failed: %s", s_config_error);
         td_config_free(s_config);
         s_config = NULL;
         return NULL;
     }
+    unlink(TD_CONFIG_BACKUP_PATH);
     return s_config;
 }
 

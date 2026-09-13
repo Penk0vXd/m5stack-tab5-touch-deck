@@ -1,6 +1,7 @@
 #include "usb/raw_hid.h"
 
 #include <stdio.h>
+#include <stdatomic.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -21,7 +22,7 @@ static td_telemetry_cb_t s_on_telemetry;
 static td_profile_cb_t s_on_profile;
 static td_config_rx_cb_t s_on_config_rx;
 static uint8_t s_seq;
-static int64_t s_last_agent_packet_us;
+static _Atomic int64_t s_last_agent_packet_us;
 
 static esp_err_t send_packet(uint8_t type, uint8_t seq, const void *payload, size_t len)
 {
@@ -50,7 +51,7 @@ static esp_err_t send_packet(uint8_t type, uint8_t seq, const void *payload, siz
 esp_err_t td_raw_hid_start(void)
 {
     s_seq = 0;
-    s_last_agent_packet_us = 0;
+    atomic_store(&s_last_agent_packet_us, 0);
     const char hello[] = "tab5-touchdeck/1";
     return send_packet(TD_MSG_HELLO, s_seq++, hello, strlen(hello));
 }
@@ -93,10 +94,11 @@ esp_err_t td_raw_hid_send_command(const char *command, uint8_t *out_seq)
 
 bool td_raw_hid_agent_present(void)
 {
-    if (s_last_agent_packet_us == 0) {
+    const int64_t last_packet_us = atomic_load(&s_last_agent_packet_us);
+    if (last_packet_us == 0) {
         return false;
     }
-    return (esp_timer_get_time() - s_last_agent_packet_us) < TD_AGENT_TIMEOUT_US;
+    return (esp_timer_get_time() - last_packet_us) < TD_AGENT_TIMEOUT_US;
 }
 
 static void handle_telemetry(const uint8_t *payload, uint8_t len)
@@ -132,7 +134,7 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_
         return;
     }
 
-    s_last_agent_packet_us = esp_timer_get_time();
+    atomic_store(&s_last_agent_packet_us, esp_timer_get_time());
 
     const uint8_t type = buffer[0];
     const uint8_t seq = buffer[1];
@@ -158,7 +160,7 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_
         handle_telemetry(payload, len);
         break;
     case TD_MSG_PROFILE: {
-        char profile[TD_MAX_PAYLOAD] = {0};
+        char profile[TD_MAX_PAYLOAD + 1] = {0};
         memcpy(profile, payload, len);
         if (s_on_profile != NULL) {
             s_on_profile(profile);
@@ -166,6 +168,7 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_
         break;
     }
     case TD_MSG_PING:
+        /* The host initiates probes; only the device echoes them. */
         send_packet(TD_MSG_PING, seq, NULL, 0);
         break;
     case TD_MSG_CFG_BEGIN:
@@ -173,7 +176,7 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_
     case TD_MSG_CFG_END:
         /* Writing to flash here would block the USB task; the receiver queues. */
         if (s_on_config_rx != NULL) {
-            s_on_config_rx(type, payload, len);
+            s_on_config_rx(type, seq, payload, len);
         }
         break;
     default:

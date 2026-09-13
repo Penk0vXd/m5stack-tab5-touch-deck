@@ -1,66 +1,65 @@
 {
-  "version": 1,
+  "version": 2,
   "platform": "windows",
-  "grid": { "cols": 5, "rows": 3 },
+  "grid": { "cols": 12, "rows": 4 },
   "brightness": 80,
   "screensaver_sec": 180,
   "pages": [
     {
-      "id": "home",
-      "title": "Home",
+      "id": "home", "title": "Home", "icon": "home",
       "buttons": [
-        { "label": "Copy",  "color": "cyan",   "action": { "type": "hid_keys", "keys": ["PRIMARY", "C"] } },
-        { "label": "Paste", "color": "cyan",   "action": { "type": "hid_keys", "keys": ["PRIMARY", "V"] } },
-        { "label": "Undo",  "color": "cyan",   "action": { "type": "hid_keys", "keys": ["PRIMARY", "Z"] } },
-        { "label": "Git",   "color": "violet", "action": { "type": "goto_page", "page": "git" } },
-        { "label": "Media", "color": "rose",   "action": { "type": "goto_page", "page": "media" } },
-
-        { "label": "Terminal", "color": "green", "action": { "type": "hid_keys", "keys": ["PRIMARY", "GRAVE"] } },
-        { "label": "Command",  "color": "green", "action": { "type": "hid_keys", "keys": ["PRIMARY", "SHIFT", "P"] } },
-        { "label": "Switch",   "color": "blue",  "action": { "type": "hid_keys", "keys": ["ALT", "TAB"] } },
-        { "label": "Lock",     "color": "amber", "action": { "type": "hid_keys", "keys": ["GUI", "L"] } },
-        { "label": "Snip",     "color": "amber", "action": { "type": "hid_keys", "keys": ["GUI", "SHIFT", "S"] } },
-
-        { "label": "Docker up",   "color": "blue",   "action": { "type": "agent", "command": "docker_up" } },
-        { "label": "Docker down", "color": "rose",   "action": { "type": "agent", "command": "docker_down" } },
-        { "label": "Notes",       "color": "violet", "action": { "type": "agent", "command": "open_notes" } },
-        { "label": "CPU",         "color": "cyan",   "tile": "cpu" },
-        { "label": "RAM",         "color": "green",  "tile": "mem" }
+        { "label": "Terminal", "icon": "terminal", "hint": "Ctrl + `", "color": "cyan", "position": { "col": 0, "row": 0, "col_span": 4, "row_span": 2 }, "action": { "type": "hid_keys", "keys": ["PRIMARY", "GRAVE"] } },
+        { "label": "Command", "icon": "list", "hint": "Ctrl + Shift + P", "color": "violet", "position": { "col": 4, "row": 0, "col_span": 4, "row_span": 2 }, "action": { "type": "hid_keys", "keys": ["PRIMARY", "SHIFT", "P"] } },
+        { "label": "CPU", "tile": "cpu", "color": "cyan", "position": { "col": 8, "row": 0, "col_span": 4, "row_span": 1 } },
+        { "label": "RAM", "tile": "mem", "color": "violet", "position": { "col": 8, "row": 1, "col_span": 4, "row_span": 1 } },
+        { "label": "Disk", "tile": "disk", "color": "amber", "position": { "col": 8, "row": 2, "col_span": 4, "row_span": 1 } },
+        { "label": "Switch app", "icon": "switch", "hint": "Alt + Tab", "variant": "utility", "color": "blue", "position": { "col": 8, "row": 3, "col_span": 4, "row_span": 1 }, "action": { "type": "hid_keys", "keys": ["ALT", "TAB"] } },
+        { "label": "Copy", "icon": "copy", "hint": "Ctrl + C", "variant": "compact", "color": "cyan", "position": { "col": 0, "row": 2, "col_span": 2, "row_span": 1 }, "action": { "type": "hid_keys", "keys": ["PRIMARY", "C"] } },
+        { "label": "Paste", "icon": "paste", "hint": "Ctrl + V", "variant": "compact", "color": "cyan", "position": { "col": 2, "row": 2, "col_span": 2, "row_span": 1 }, "action": { "type": "hid_keys", "keys": ["PRIMARY", "V"] } },
+        { "label": "Undo", "icon": "undo", "hint": "Ctrl + Z", "variant": "compact", "color": "violet", "position": { "col": 4, "row": 2, "col_span": 2, "row_span": 1 }, "action": { "type": "hid_keys", "keys": ["PRIMARY", "Z"] } },
+        { "label": "Snip", "icon": "snip", "hint": "Win + Shift + S", "variant": "compact", "color": "amber", "position": { "col": 6, "row": 2, "col_span": 2, "row_span": 1 }, "action": { "type": "hid_keys", "keys": ["GUI", "SHIFT", "S"] } },
+        { "label": "Notes", "icon": "notes", "hint": "Open notes", "variant": "utility", "color": "violet", "position": { "col": 0, "row": 3, "col_span": 4, "row_span": 1 }, "action": { "type": "agent", "command": "open_notes" } },
+        { "label": "Lock", "icon": "lock", "hint": "Win + L", "variant": "utility", "color": "amber", "position": { "col": 4, "row": 3, "col_span": 4, "row_span": 1 }, "action": { "type": "hid_keys", "keys": ["GUI", "L"] } }
       ]
     },
     {
-      "id": "git",
-      "title": "Git",
-      "match": ["visual studio code", "cmd.exe", "powershell"],
+      "id": "work", "title": "Work", "icon": "work",
+      "match": ["visual studio code", "cmd.exe", "powershell", "terminal"],
       "buttons": [
-        {
-          "label": "Commit",
-          "color": "violet",
-          "action": {
-            "type": "macro",
-            "steps": [
-              { "type": "hid_keys", "keys": ["PRIMARY", "GRAVE"] },
-              { "type": "delay", "ms": 120 },
-              { "type": "text", "text": "git add -A && git commit\n" }
-            ]
-          }
-        },
-        { "label": "Status",  "color": "cyan",  "action": { "type": "agent", "command": "git_status" } },
-        { "label": "Push",    "color": "green", "action": { "type": "text", "text": "git push\n" } },
-        { "label": "Pull",    "color": "blue",  "action": { "type": "text", "text": "git pull --rebase\n" } },
-        { "label": "Back",    "color": "amber", "action": { "type": "goto_page", "page": "home" } }
+        { "label": "Git status", "icon": "list", "hint": "Repository summary", "color": "cyan", "position": { "col": 0, "row": 0, "col_span": 4, "row_span": 2 }, "action": { "type": "agent", "command": "git_status" } },
+        { "label": "Commit all", "icon": "save", "hint": "Hold to run", "color": "violet", "position": { "col": 4, "row": 0, "col_span": 4, "row_span": 2 }, "long_press": { "type": "macro", "steps": [ { "type": "hid_keys", "keys": ["PRIMARY", "GRAVE"] }, { "type": "delay", "ms": 120 }, { "type": "text", "text": "git add -A && git commit\n" } ] } },
+        { "label": "Run tests", "icon": "play", "hint": "Host unit tests", "color": "green", "position": { "col": 8, "row": 0, "col_span": 4, "row_span": 1 }, "action": { "type": "agent", "command": "run_tests" } },
+        { "label": "Open project", "icon": "file", "hint": "File Explorer", "color": "blue", "position": { "col": 8, "row": 1, "col_span": 4, "row_span": 1 }, "action": { "type": "agent", "command": "open_project" } },
+        { "label": "Push", "icon": "upload", "hint": "git push", "variant": "compact", "color": "green", "position": { "col": 0, "row": 2, "col_span": 4, "row_span": 1 }, "action": { "type": "text", "text": "git push\n" } },
+        { "label": "Pull", "icon": "download", "hint": "git pull --rebase", "variant": "compact", "color": "blue", "position": { "col": 4, "row": 2, "col_span": 4, "row_span": 1 }, "action": { "type": "text", "text": "git pull --rebase\n" } },
+        { "label": "Terminal", "icon": "terminal", "hint": "Ctrl + `", "variant": "utility", "color": "cyan", "position": { "col": 8, "row": 2, "col_span": 4, "row_span": 1 }, "action": { "type": "hid_keys", "keys": ["PRIMARY", "GRAVE"] } },
+        { "label": "Save", "icon": "save", "hint": "Ctrl + S", "variant": "utility", "color": "violet", "position": { "col": 0, "row": 3, "col_span": 4, "row_span": 1 }, "action": { "type": "hid_keys", "keys": ["PRIMARY", "S"] } },
+        { "label": "Command", "icon": "list", "hint": "Ctrl + Shift + P", "variant": "utility", "color": "amber", "position": { "col": 4, "row": 3, "col_span": 4, "row_span": 1 }, "action": { "type": "hid_keys", "keys": ["PRIMARY", "SHIFT", "P"] } },
+        { "label": "Home", "icon": "home", "hint": "Back to home", "variant": "utility", "color": "blue", "position": { "col": 8, "row": 3, "col_span": 4, "row_span": 1 }, "action": { "type": "goto_page", "page": "home" } }
       ]
     },
     {
-      "id": "media",
-      "title": "Media",
+      "id": "media", "title": "Media", "icon": "media",
       "match": ["spotify", "youtube", "vlc"],
       "buttons": [
-        { "label": "Volume", "color": "rose", "slider": { "key_up": "VOLUME_UP", "key_down": "VOLUME_DOWN", "step": 4 } },
-        { "label": "Mute",  "color": "amber",  "action": { "type": "hid_consumer", "key": "MUTE" } },
-        { "label": "Play",  "color": "green",  "action": { "type": "hid_consumer", "key": "PLAY_PAUSE" } },
-        { "label": "Next",  "color": "cyan",   "action": { "type": "hid_consumer", "key": "NEXT_TRACK" } },
-        { "label": "Back",  "color": "violet", "action": { "type": "goto_page", "page": "home" } }
+        { "label": "Volume", "color": "rose", "position": { "col": 0, "row": 0, "col_span": 8, "row_span": 2 }, "slider": { "key_up": "VOLUME_UP", "key_down": "VOLUME_DOWN", "step": 4 } },
+        { "label": "Play / pause", "icon": "play", "hint": "Media key", "color": "green", "position": { "col": 8, "row": 0, "col_span": 4, "row_span": 2 }, "action": { "type": "hid_consumer", "key": "PLAY_PAUSE" } },
+        { "label": "Mute", "icon": "audio", "hint": "Media key", "variant": "compact", "color": "amber", "position": { "col": 0, "row": 2, "col_span": 4, "row_span": 1 }, "action": { "type": "hid_consumer", "key": "MUTE" } },
+        { "label": "Next", "icon": "next", "hint": "Next track", "variant": "compact", "color": "cyan", "position": { "col": 4, "row": 2, "col_span": 4, "row_span": 1 }, "action": { "type": "hid_consumer", "key": "NEXT_TRACK" } },
+        { "label": "Previous", "icon": "back", "hint": "Previous track", "variant": "compact", "color": "violet", "position": { "col": 8, "row": 2, "col_span": 4, "row_span": 1 }, "action": { "type": "hid_consumer", "key": "PREV_TRACK" } },
+        { "label": "Home", "icon": "home", "hint": "Back to home", "variant": "utility", "color": "blue", "position": { "col": 0, "row": 3, "col_span": 12, "row_span": 1 }, "action": { "type": "goto_page", "page": "home" } }
+      ]
+    },
+    {
+      "id": "system", "title": "System", "icon": "settings",
+      "buttons": [
+        { "label": "CPU", "tile": "cpu", "color": "cyan", "position": { "col": 0, "row": 0, "col_span": 4, "row_span": 2 } },
+        { "label": "RAM", "tile": "mem", "color": "violet", "position": { "col": 4, "row": 0, "col_span": 4, "row_span": 2 } },
+        { "label": "Disk", "tile": "disk", "color": "amber", "position": { "col": 8, "row": 0, "col_span": 4, "row_span": 2 } },
+        { "label": "Dim display", "icon": "download", "hint": "35% brightness", "variant": "utility", "color": "violet", "position": { "col": 0, "row": 2, "col_span": 6, "row_span": 1 }, "action": { "type": "brightness", "percent": 35 } },
+        { "label": "Bright display", "icon": "upload", "hint": "80% brightness", "variant": "utility", "color": "cyan", "position": { "col": 6, "row": 2, "col_span": 6, "row_span": 1 }, "action": { "type": "brightness", "percent": 80 } },
+        { "label": "Lock PC", "icon": "lock", "hint": "Win + L", "variant": "utility", "color": "amber", "position": { "col": 0, "row": 3, "col_span": 6, "row_span": 1 }, "action": { "type": "hid_keys", "keys": ["GUI", "L"] } },
+        { "label": "Home", "icon": "home", "hint": "Back to home", "variant": "utility", "color": "blue", "position": { "col": 6, "row": 3, "col_span": 6, "row_span": 1 }, "action": { "type": "goto_page", "page": "home" } }
       ]
     }
   ]

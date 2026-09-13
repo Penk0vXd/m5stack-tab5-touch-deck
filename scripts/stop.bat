@@ -11,9 +11,5 @@ if errorlevel 1 (
     echo Stopped agent window.
 )
 
-REM Fallback: catch any agent.py process the window-title kill missed
-REM (e.g. started manually outside start.bat).
-powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'python.exe' -and $_.CommandLine -like '*agent.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Output ('Killed stray agent.py process ' + $_.ProcessId) }"
-
 endlocal
 pause
