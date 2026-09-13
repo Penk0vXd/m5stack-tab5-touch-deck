@@ -31,10 +31,10 @@ ESP-IDF **5.5.5**, C/CMake/Ninja/FreeRTOS, локално модифициран
 
 ## Quick Start
 
-Изпълнете [SETUP](docs/SETUP.md) за Git, ESP-IDF 5.5.5 и Python. Командите са за PowerShell. `REPLACE_WITH_REPOSITORY_URL` е задължителен placeholder: предоставената папка няма `.git`, така че remote адресът не може да се установи.
+Изпълнете [SETUP](docs/SETUP.md) за Git, ESP-IDF 5.5.5 и Python. Командите са за PowerShell:
 
 ```powershell
-git clone --recurse-submodules REPLACE_WITH_REPOSITORY_URL tab5-touch-deck
+git clone --recurse-submodules https://github.com/Penk0vXd/m5stack-tab5-touch-deck.git tab5-touch-deck
 cd tab5-touch-deck
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r host-agent\requirements.txt

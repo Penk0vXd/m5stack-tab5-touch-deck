@@ -43,11 +43,11 @@ python --version
 
 Отворете PowerShell и изпълнете:
 ```powershell
-git clone --recurse-submodules REPLACE_WITH_REPOSITORY_URL tab5-touch-deck
+git clone --recurse-submodules https://github.com/Penk0vXd/m5stack-tab5-touch-deck.git tab5-touch-deck
 cd tab5-touch-deck
 ```
 
-*(Забележка: `REPLACE_WITH_REPOSITORY_URL` трябва да се замени с реалния URL на хранилището, след като то бъде публикувано.)*
+*(Забележка: хранилището е клонирано с `--recurse-submodules`, за да се изтеглят евентуални подмодули.)*
 
 ## 5. Virtual Environment & Python Dependencies
 
